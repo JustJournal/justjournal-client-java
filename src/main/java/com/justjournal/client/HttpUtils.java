@@ -1,6 +1,5 @@
 package com.justjournal.client;
 
-import javax.net.ssl.HttpsURLConnection;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -18,17 +17,13 @@ public class HttpUtils {
     private HttpUtils() {
     }
 
-    public static HttpsURLConnection getSSLConnection(final String url) throws IOException {
-        final URL jj = new URL(url);
-        final HttpsURLConnection sslConn = (HttpsURLConnection) jj.openConnection();
-        sslConn.setRequestProperty(USER_AGENT_HEADER, USER_AGENT);
-
-        sslConn.setRequestMethod(HTTP_POST);
-        sslConn.setDoOutput(true);
-        sslConn.setDoInput(true);
-        return sslConn;
-    }
-
+    /**
+     * Opens a POST connection. An https url gives a TLS connection with the JDK's default certificate checks.
+     *
+     * @param url url to post to
+     * @return connection ready for writing the request body
+     * @throws IOException if the connection can't be opened
+     */
     public static HttpURLConnection getConnection(final String url) throws IOException {
         final URL jj = new URL(url);
         final HttpURLConnection conn = (HttpURLConnection) jj.openConnection();

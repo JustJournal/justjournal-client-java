@@ -7,10 +7,10 @@ package com.justjournal.client;/*
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.HttpsURLConnection;
-import java.io.OutputStreamWriter;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -22,6 +22,8 @@ public class Entry {
     final Logger log = LoggerFactory.getLogger(Entry.class);
 
     public static final String JJ_JOURNAL_UPDATE_OK = "JJ.JOURNAL.UPDATE.OK";
+    private static final String SITE_URL = "https://www.justjournal.com/";
+    private final String siteUrl;
     // account information
     private String username;
     private String password;
@@ -33,8 +35,20 @@ public class Entry {
      * @param jjPassword
      */
     public Entry(final String jjUsername, final String jjPassword) {
+        this(jjUsername, jjPassword, SITE_URL);
+    }
+
+    /**
+     * Constructor for a specific server
+     *
+     * @param jjUsername
+     * @param jjPassword
+     * @param siteUrl    base url of the justjournal site, ending in /
+     */
+    Entry(final String jjUsername, final String jjPassword, final String siteUrl) {
         username = jjUsername;
         password = jjPassword;
+        this.siteUrl = siteUrl;
     }
 
     /**
@@ -105,10 +119,10 @@ public class Entry {
             data += "&allow_comment=" + strAllow;
             data += "&email_comment=" + strEmail;
             //data += "&date=" + URLEncoder.encode(strDate, "UTF-8"); This is handled server side for now
-            data += "&subject=" + URLEncoder.encode(subject, "UTF-8");
-            data += "&body=" + URLEncoder.encode(body, "UTF-8");
+            data += "&subject=" + URLEncoder.encode(subject, StandardCharsets.UTF_8.displayName());
+            data += "&body=" + URLEncoder.encode(body, StandardCharsets.UTF_8.displayName());
 
-            final HttpsURLConnection conn = HttpUtils.getSSLConnection("https://www.justjournal.com/updateJournal");
+            final HttpURLConnection conn = HttpUtils.getConnection(siteUrl + "updateJournal");
             conn.setRequestProperty("Content-Type", HttpUtils.FORM_URLENCODED);
             conn.setRequestProperty("Content-Length", Integer.toString(data.length()));
 
@@ -125,7 +139,7 @@ public class Entry {
             final char[] returnCode = new char[50];
             int i = 0;
             // for debugging
-            while (response != -1) {
+            while (response != -1 && i < returnCode.length) {
                 returnCode[i] = (char) response;
                 i++;
                 response = input.read();

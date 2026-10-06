@@ -4,7 +4,6 @@ import com.justjournal.client.model.Login;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.HttpsURLConnection;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
@@ -13,6 +12,7 @@ import javax.ws.rs.core.Response;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -24,8 +24,8 @@ public class Auth {
     final Logger log = LoggerFactory.getLogger(Auth.class);
 
     private static final String JJ_LOGIN_OK = "JJ.LOGIN.OK";
-    private static final String API_URL = "https://www.justjournal.com/api/";
-    private final String apiUrl;
+    private static final String SITE_URL = "https://www.justjournal.com/";
+    private final String siteUrl;
     private String userName;
     private String password;
 
@@ -36,20 +36,20 @@ public class Auth {
      * @param password justjournal.com password
      */
     public Auth(final String username, final String password) {
-        this(username, password, API_URL);
+        this(username, password, SITE_URL);
     }
 
     /**
-     * Creates instance of jj_auth against a specific REST API base url
+     * Creates instance of jj_auth against a specific server
      *
      * @param username justjournal.com username
      * @param password justjournal.com password
-     * @param apiUrl   base url of the justjournal REST API
+     * @param siteUrl  base url of the justjournal site, ending in /
      */
-    Auth(final String username, final String password, final String apiUrl) {
+    Auth(final String username, final String password, final String siteUrl) {
         userName = username;
         this.password = password;
-        this.apiUrl = apiUrl;
+        this.siteUrl = siteUrl;
     }
 
     /**
@@ -63,15 +63,15 @@ public class Auth {
             userName = userName.trim();
             String data = "username=" + URLEncoder.encode(userName, StandardCharsets.UTF_8.displayName());
             data += "&password=" + URLEncoder.encode(password, StandardCharsets.UTF_8.displayName());
-            final HttpsURLConnection sslConn = HttpUtils.getSSLConnection("https://www.justjournal.com/loginAccount");
+            final HttpURLConnection conn = HttpUtils.getConnection(siteUrl + "loginAccount");
             final OutputStreamWriter writer =
-                    new OutputStreamWriter(sslConn.getOutputStream());
+                    new OutputStreamWriter(conn.getOutputStream());
 
             writer.write(data);
             writer.flush();
             writer.close();
             // getting the response
-            final BufferedReader input = new BufferedReader(new InputStreamReader(sslConn.getInputStream()));
+            final BufferedReader input = new BufferedReader(new InputStreamReader(conn.getInputStream()));
             final char[] returnCode = new char[512];
             int i = 0;
             int tempChar = input.read();
@@ -107,7 +107,7 @@ public class Auth {
             login.setUsername(userName);
             login.setPassword(password);
 
-            final Response res = client.target(apiUrl).path("login")
+            final Response res = client.target(siteUrl).path("api/login")
                     .request(MediaType.APPLICATION_JSON)
                     .post(Entity.entity(login, MediaType.APPLICATION_JSON));
             try {

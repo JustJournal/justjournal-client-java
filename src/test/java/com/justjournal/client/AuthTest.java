@@ -2,26 +2,19 @@ package com.justjournal.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpServer;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests {@link Auth#restLogin()} against a local stub of the REST API.
+ * Tests {@link Auth} against a local stub of the justjournal server.
  *
  * @author Lucas Holt
  */
@@ -30,80 +23,101 @@ public class AuthTest {
     private static final String USER = "testuser";
     private static final String PASS = "testpass";
 
-    private HttpServer server;
-    private String apiUrl;
-    private final AtomicInteger status = new AtomicInteger(200);
-    private final AtomicReference<String> requestMethod = new AtomicReference<>();
-    private final AtomicReference<String> requestContentType = new AtomicReference<>();
-    private final AtomicReference<String> requestBody = new AtomicReference<>();
+    private StubServer server;
 
     @Before
     public void setUp() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/api/login", exchange -> {
-            requestMethod.set(exchange.getRequestMethod());
-            requestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
-            requestBody.set(readAll(exchange.getRequestBody()));
-
-            final byte[] response = "{}".getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(status.get(), response.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response);
-            }
-        });
-        server.start();
-        apiUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/api/";
+        server = new StubServer();
     }
 
     @After
     public void tearDown() {
-        server.stop(0);
+        server.close();
     }
+
+    private Auth auth(final String user, final String pass) {
+        return new Auth(user, pass, server.url());
+    }
+
+    // restLogin
 
     @Test
     public void testRestLoginSuccess() {
-        status.set(200);
-        assertTrue(new Auth(USER, PASS, apiUrl).restLogin());
+        server.contentType = "application/json";
+        server.responseBody = "{}";
+        assertTrue(auth(USER, PASS).restLogin());
     }
 
     @Test
     public void testRestLoginSendsJsonCredentials() throws IOException {
-        new Auth(USER, PASS, apiUrl).restLogin();
+        auth(USER, PASS).restLogin();
 
-        assertEquals("POST", requestMethod.get());
-        assertTrue(requestContentType.get().startsWith("application/json"));
+        assertEquals("POST", server.requestMethod);
+        assertEquals("/api/login", server.requestPath);
+        assertTrue(server.requestContentType.startsWith("application/json"));
 
-        final JsonNode json = new ObjectMapper().readTree(requestBody.get());
+        final JsonNode json = new ObjectMapper().readTree(server.requestBody);
         assertEquals(USER, json.get("username").asText());
         assertEquals(PASS, json.get("password").asText());
     }
 
     @Test
     public void testRestLoginUnauthorized() {
-        status.set(401);
-        assertFalse(new Auth(USER, PASS, apiUrl).restLogin());
+        server.status = 401;
+        assertFalse(auth(USER, PASS).restLogin());
     }
 
     @Test
     public void testRestLoginServerError() {
-        status.set(500);
-        assertFalse(new Auth(USER, PASS, apiUrl).restLogin());
+        server.status = 500;
+        assertFalse(auth(USER, PASS).restLogin());
     }
 
     @Test
     public void testRestLoginServerUnavailable() {
-        server.stop(0);
-        assertFalse(new Auth(USER, PASS, apiUrl).restLogin());
+        server.close();
+        assertFalse(auth(USER, PASS).restLogin());
     }
 
-    private static String readAll(final InputStream in) throws IOException {
-        final ByteArrayOutputStream out = new ByteArrayOutputStream();
-        final byte[] buffer = new byte[1024];
-        int read;
-        while ((read = in.read(buffer)) != -1) {
-            out.write(buffer, 0, read);
-        }
-        return new String(out.toByteArray(), StandardCharsets.UTF_8);
+    // secureCheckAccount
+
+    @Test
+    public void testSecureCheckAccountSuccess() {
+        server.responseBody = "JJ.LOGIN.OK";
+        assertTrue(auth(USER, PASS).secureCheckAccount());
+        assertEquals("POST", server.requestMethod);
+        assertEquals("/loginAccount", server.requestPath);
+        assertEquals("JustJournal", server.requestUserAgent);
+    }
+
+    @Test
+    public void testSecureCheckAccountRejected() {
+        server.responseBody = "JJ.LOGIN.FAIL";
+        assertFalse(auth(USER, PASS).secureCheckAccount());
+    }
+
+    @Test
+    public void testSecureCheckAccountEncodesCredentials() {
+        server.responseBody = "JJ.LOGIN.OK";
+        final String pass = "p&ss=wo+rd&username=other";
+        auth("  " + USER + " ", pass).secureCheckAccount();
+
+        final Map<String, String> fields = server.formFields();
+        assertEquals(2, fields.size());
+        assertEquals(USER, fields.get("username"));
+        assertEquals(pass, fields.get("password"));
+    }
+
+    @Test
+    public void testSecureCheckAccountServerError() {
+        server.status = 500;
+        server.responseBody = "JJ.LOGIN.OK";
+        assertFalse(auth(USER, PASS).secureCheckAccount());
+    }
+
+    @Test
+    public void testSecureCheckAccountServerUnavailable() {
+        server.close();
+        assertFalse(auth(USER, PASS).secureCheckAccount());
     }
 }
