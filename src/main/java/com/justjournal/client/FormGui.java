@@ -19,6 +19,7 @@ public class FormGui implements ActionListener {
 
     final Logger log = LoggerFactory.getLogger(FormGui.class);
 
+    private final String siteUrl;
     private JFrame frame;
     private JPanel loginPanel;
     private JTextField username;
@@ -39,6 +40,16 @@ public class FormGui implements ActionListener {
      * Constructor
      */
     public FormGui() {
+        this(HttpUtils.SITE_URL);
+    }
+
+    /**
+     * Constructor for a specific server
+     *
+     * @param siteUrl base url of the justjournal site, ending in /
+     */
+    FormGui(final String siteUrl) {
+        this.siteUrl = siteUrl;
         initJFrame();
     }
 
@@ -289,7 +300,7 @@ public class FormGui implements ActionListener {
         if (!showLoginProblems(true)) {
             return false;
         }
-        final Auth jjLogin = new Auth(username.getText(), new String(password.getPassword()));
+        final Auth jjLogin = new Auth(username.getText(), new String(password.getPassword()), siteUrl);
 
         final boolean result;
 
@@ -369,23 +380,42 @@ public class FormGui implements ActionListener {
      * @return true if update was successful
      */
     private boolean update() {
-        final Entry updateJJ = new Entry(username.getText(), new String(password.getPassword()));
+        final Entry updateJJ = new Entry(username.getText(), new String(password.getPassword()), siteUrl);
         final boolean result = updateJJ.update(subject.getText(), body.getText(),
                 selectedValue(mood), selectedValue(location),
                 selectedValue(security), music.getText(),
                 autoFormat.isSelected(), emailComments.isSelected(), allowComments.isSelected());
-        if (!result) {
+        if (result) {
+            showMessage("Entry posted", "Your journal entry was posted.", JOptionPane.INFORMATION_MESSAGE);
+            clearEntry();
+        } else {
             showError("Entry not posted", updateJJ.getLastError());
         }
         return result;
     }
 
+    /**
+     * Clears what was written so the next entry starts empty. Location, security and the
+     * checkboxes keep their settings since they usually stay the same between entries.
+     */
+    private void clearEntry() {
+        subject.setText("");
+        body.setText("");
+        music.setText("");
+        mood.setSelectedItem(Moods.NOT_SPECIFIED);
+        subject.requestFocusInWindow();
+    }
+
     private void showError(final String title, final String message) {
-        final String text = message != null ? message : "Something went wrong. Please try again.";
+        showMessage(title, message != null ? message : "Something went wrong. Please try again.",
+                JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void showMessage(final String title, final String message, final int messageType) {
         // html so long messages wrap instead of making a very wide dialog
         final String html = "<html><body style='width: 300px'>"
-                + text.replace("&", "&amp;").replace("<", "&lt;") + "</body></html>";
-        JOptionPane.showMessageDialog(frame, html, title, JOptionPane.ERROR_MESSAGE);
+                + message.replace("&", "&amp;").replace("<", "&lt;") + "</body></html>";
+        JOptionPane.showMessageDialog(frame, html, title, messageType);
     }
 
     private static String selectedValue(final JComboBox<String> comboBox) {

@@ -25,7 +25,6 @@ public class Entry {
     public static final String JJ_JOURNAL_UPDATE_OK = "JJ.JOURNAL.UPDATE.OK";
     private static final String JJ_JOURNAL_UPDATE_FAIL = "JJ.JOURNAL.UPDATE.FAIL";
     private static final String JJ_LOGIN_FAIL = "JJ.LOGIN.FAIL";
-    private static final String SITE_URL = "https://www.justjournal.com/";
     private final String siteUrl;
     // account information
     private final String username;
@@ -39,7 +38,7 @@ public class Entry {
      * @param jjPassword
      */
     public Entry(final String jjUsername, final String jjPassword) {
-        this(jjUsername, jjPassword, SITE_URL);
+        this(jjUsername, jjPassword, HttpUtils.SITE_URL);
     }
 
     /**

@@ -27,7 +27,6 @@ public class Auth {
     private static final String JJ_LOGIN_OK = "JJ.LOGIN.OK";
     static final String BAD_LOGIN = "The username or password is incorrect. "
             + "After a failed login the server makes you wait a few seconds before trying again.";
-    private static final String SITE_URL = "https://www.justjournal.com/";
     private final String siteUrl;
     private final String userName;
     private final String password;
@@ -40,7 +39,7 @@ public class Auth {
      * @param password justjournal.com password
      */
     public Auth(final String username, final String password) {
-        this(username, password, SITE_URL);
+        this(username, password, HttpUtils.SITE_URL);
     }
 
     /**

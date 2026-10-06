@@ -10,6 +10,9 @@ import java.net.URL;
  */
 public class HttpUtils {
 
+    /** The justjournal site the client talks to. */
+    static final String SITE_URL = "https://www.justjournal.com/";
+
     public static final String FORM_URLENCODED = "application/x-www-form-urlencoded";
     private static final String USER_AGENT = "JustJournal";
     public static final String HTTP_POST = "POST";
