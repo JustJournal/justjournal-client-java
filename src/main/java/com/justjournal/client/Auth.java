@@ -25,10 +25,13 @@ public class Auth {
     final Logger log = LoggerFactory.getLogger(Auth.class);
 
     private static final String JJ_LOGIN_OK = "JJ.LOGIN.OK";
+    static final String BAD_LOGIN = "The username or password is incorrect. "
+            + "After a failed login the server makes you wait a few seconds before trying again.";
     private static final String SITE_URL = "https://www.justjournal.com/";
     private final String siteUrl;
     private final String userName;
     private final String password;
+    private String lastError;
 
     /**
      * Creates instance of jj_auth
@@ -92,8 +95,10 @@ public class Auth {
 
             if (code.equals(JJ_LOGIN_OK))
                 return true;
+            lastError = BAD_LOGIN;
         } catch (Exception e) {
             log.error("Unable to validate secure login", e);
+            lastError = HttpUtils.describeFailure(siteUrl);
         }
         return false;
     }
@@ -117,16 +122,20 @@ public class Auth {
                     .request(MediaType.APPLICATION_JSON)
                     .post(Entity.entity(login, MediaType.APPLICATION_JSON));
             try {
-                if (res.getStatus() == Response.Status.OK.getStatusCode()) {
+                final int status = res.getStatus();
+                if (status == Response.Status.OK.getStatusCode()) {
                     return true;
                 }
-                log.error("Failed login, status {}", res.getStatus());
+                log.error("Failed login, status {}", status);
+                lastError = status == Response.Status.UNAUTHORIZED.getStatusCode()
+                        ? BAD_LOGIN : HttpUtils.describeStatus(status);
                 return false;
             } finally {
                 res.close();
             }
         } catch (Exception e) {
             log.error("Unexpected error, failed login", e);
+            lastError = HttpUtils.describeFailure(siteUrl);
             return false;
         } finally {
             client.close();
@@ -143,7 +152,15 @@ public class Auth {
             return true;
         }
         log.error("Not sending login: {}", String.join(" ", problems));
+        lastError = String.join(" ", problems);
         return false;
+    }
+
+    /**
+     * @return why the last login failed, in words for the user, or null if it hasn't failed
+     */
+    public String getLastError() {
+        return lastError;
     }
 
 }

@@ -115,15 +115,38 @@ public class EntryTest {
 
     @Test
     public void testUpdateInvalidCredentialsNotSent() {
-        assertFalse(new Entry("testuser", "bad%pass", server.url()).update("subject", "body", "Happy", "Home",
-                "Public", "music", true, false, true));
+        final Entry bad = new Entry("testuser", "bad%pass", server.url());
+        assertFalse(bad.update("subject", "body", "Happy", "Home", "Public", "music", true, false, true));
         assertNull(server.requestMethod);
+        assertEquals(Credentials.passwordProblem("bad%pass"), bad.getLastError());
+    }
+
+    @Test
+    public void testUpdateSuccessHasNoError() {
+        assertTrue(post("Home", "Public", true, false, true));
+        assertNull(entry.getLastError());
     }
 
     @Test
     public void testUpdateRejected() {
+        server.responseBody = "JJ.JOURNAL.UPDATE.FAIL";
+        assertFalse(post("Home", "Public", true, false, true));
+        assertTrue(entry.getLastError(), entry.getLastError().startsWith("The server couldn't save the entry"));
+    }
+
+    @Test
+    public void testUpdateBadLogin() {
+        // the server writes the failure code twice when authentication fails
+        server.responseBody = "JJ.LOGIN.FAILJJ.LOGIN.FAIL";
+        assertFalse(post("Home", "Public", true, false, true));
+        assertEquals(Auth.BAD_LOGIN, entry.getLastError());
+    }
+
+    @Test
+    public void testUpdateUnexpectedResponse() {
         server.responseBody = "JJ.ERROR";
         assertFalse(post("Home", "Public", true, false, true));
+        assertTrue(entry.getLastError(), entry.getLastError().startsWith("The server sent an unexpected reply"));
     }
 
     @Test
@@ -135,12 +158,22 @@ public class EntryTest {
     @Test
     public void testUpdateServerError() {
         server.status = 500;
+        server.responseBody = Entry.JJ_JOURNAL_UPDATE_OK;
         assertFalse(post("Home", "Public", true, false, true));
+        assertEquals("The server had a problem (HTTP 500). Try again later.", entry.getLastError());
+    }
+
+    @Test
+    public void testUpdateClientError() {
+        server.status = 404;
+        assertFalse(post("Home", "Public", true, false, true));
+        assertEquals("The server refused the request (HTTP 404).", entry.getLastError());
     }
 
     @Test
     public void testUpdateServerUnavailable() {
         server.close();
         assertFalse(post("Home", "Public", true, false, true));
+        assertTrue(entry.getLastError(), entry.getLastError().startsWith("Couldn't connect to 127.0.0.1"));
     }
 }

@@ -296,6 +296,9 @@ public class FormGui implements ActionListener {
         result = jjLogin.restLogin();
                 //jjLogin.secureCheckAccount();
         log.info("Login successful? {}", result);
+        if (!result) {
+            showError("Login failed", jjLogin.getLastError());
+        }
 
         // if login was successful, init update panel
         return result;
@@ -367,10 +370,22 @@ public class FormGui implements ActionListener {
      */
     private boolean update() {
         final Entry updateJJ = new Entry(username.getText(), new String(password.getPassword()));
-        return updateJJ.update(subject.getText(), body.getText(),
+        final boolean result = updateJJ.update(subject.getText(), body.getText(),
                 selectedValue(mood), selectedValue(location),
                 selectedValue(security), music.getText(),
                 autoFormat.isSelected(), emailComments.isSelected(), allowComments.isSelected());
+        if (!result) {
+            showError("Entry not posted", updateJJ.getLastError());
+        }
+        return result;
+    }
+
+    private void showError(final String title, final String message) {
+        final String text = message != null ? message : "Something went wrong. Please try again.";
+        // html so long messages wrap instead of making a very wide dialog
+        final String html = "<html><body style='width: 300px'>"
+                + text.replace("&", "&amp;").replace("<", "&lt;") + "</body></html>";
+        JOptionPane.showMessageDialog(frame, html, title, JOptionPane.ERROR_MESSAGE);
     }
 
     private static String selectedValue(final JComboBox<String> comboBox) {

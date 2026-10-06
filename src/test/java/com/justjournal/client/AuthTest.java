@@ -79,21 +79,41 @@ public class AuthTest {
     }
 
     @Test
+    public void testRestLoginSuccessHasNoError() {
+        final Auth auth = auth(USER, PASS);
+        assertTrue(auth.restLogin());
+        assertNull(auth.getLastError());
+    }
+
+    @Test
     public void testRestLoginUnauthorized() {
         server.status = 401;
-        assertFalse(auth(USER, PASS).restLogin());
+        final Auth auth = auth(USER, PASS);
+        assertFalse(auth.restLogin());
+        assertEquals(Auth.BAD_LOGIN, auth.getLastError());
     }
 
     @Test
     public void testRestLoginServerError() {
-        server.status = 500;
-        assertFalse(auth(USER, PASS).restLogin());
+        server.status = 502;
+        final Auth auth = auth(USER, PASS);
+        assertFalse(auth.restLogin());
+        assertTrue(auth.getLastError(), auth.getLastError().contains("HTTP 502"));
     }
 
     @Test
     public void testRestLoginServerUnavailable() {
         server.close();
-        assertFalse(auth(USER, PASS).restLogin());
+        final Auth auth = auth(USER, PASS);
+        assertFalse(auth.restLogin());
+        assertTrue(auth.getLastError(), auth.getLastError().startsWith("Couldn't connect to 127.0.0.1"));
+    }
+
+    @Test
+    public void testRestLoginInvalidError() {
+        final Auth auth = auth("ab", PASS);
+        assertFalse(auth.restLogin());
+        assertEquals(Credentials.usernameProblem("ab"), auth.getLastError());
     }
 
     // secureCheckAccount
@@ -110,7 +130,9 @@ public class AuthTest {
     @Test
     public void testSecureCheckAccountRejected() {
         server.responseBody = "JJ.LOGIN.FAIL";
-        assertFalse(auth(USER, PASS).secureCheckAccount());
+        final Auth auth = auth(USER, PASS);
+        assertFalse(auth.secureCheckAccount());
+        assertEquals(Auth.BAD_LOGIN, auth.getLastError());
     }
 
     @Test
@@ -149,6 +171,8 @@ public class AuthTest {
     @Test
     public void testSecureCheckAccountServerUnavailable() {
         server.close();
-        assertFalse(auth(USER, PASS).secureCheckAccount());
+        final Auth auth = auth(USER, PASS);
+        assertFalse(auth.secureCheckAccount());
+        assertTrue(auth.getLastError(), auth.getLastError().startsWith("Couldn't connect to 127.0.0.1"));
     }
 }

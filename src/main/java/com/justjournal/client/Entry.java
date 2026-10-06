@@ -23,11 +23,14 @@ public class Entry {
     final Logger log = LoggerFactory.getLogger(Entry.class);
 
     public static final String JJ_JOURNAL_UPDATE_OK = "JJ.JOURNAL.UPDATE.OK";
+    private static final String JJ_JOURNAL_UPDATE_FAIL = "JJ.JOURNAL.UPDATE.FAIL";
+    private static final String JJ_LOGIN_FAIL = "JJ.LOGIN.FAIL";
     private static final String SITE_URL = "https://www.justjournal.com/";
     private final String siteUrl;
     // account information
     private final String username;
     private final String password;
+    private String lastError;
 
     /**
      * Constructor
@@ -73,6 +76,7 @@ public class Entry {
         final List<String> problems = Credentials.problems(username, password);
         if (!problems.isEmpty()) {
             log.error("Not sending entry: {}", String.join(" ", problems));
+            lastError = String.join(" ", problems);
             return false;
         }
 
@@ -140,6 +144,12 @@ public class Entry {
             writer.flush();
             writer.close();
             // getting the response
+            final int status = conn.getResponseCode();
+            if (status != HttpURLConnection.HTTP_OK) {
+                log.error("Could not save entry, status {}", status);
+                lastError = HttpUtils.describeStatus(status);
+                return false;
+            }
             final BufferedReader input = new BufferedReader(new InputStreamReader
                     (conn.getInputStream()));
             int response = input.read();
@@ -158,13 +168,28 @@ public class Entry {
             if (code.compareTo(JJ_JOURNAL_UPDATE_OK) == 0)
                 return true;
             log.debug("JJUpdate(): {}", code);
+            if (code.startsWith(JJ_LOGIN_FAIL)) {
+                lastError = Auth.BAD_LOGIN;
+            } else if (code.startsWith(JJ_JOURNAL_UPDATE_FAIL)) {
+                lastError = "The server couldn't save the entry. Check the entry and try again.";
+            } else {
+                lastError = "The server sent an unexpected reply, so the entry may not have been saved.";
+            }
         } catch (final Exception e) {
             log.error("Could not save entry", e);
+            lastError = HttpUtils.describeFailure(siteUrl);
         }
 
         // if we get this far, we failed
         // display error msg
         return false;
+    }
+
+    /**
+     * @return why the last update failed, in words for the user, or null if it hasn't failed
+     */
+    public String getLastError() {
+        return lastError;
     }
 
 }
