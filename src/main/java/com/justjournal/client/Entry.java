@@ -56,7 +56,7 @@ public class Entry {
      *
      * @param subject
      * @param body
-     * @param mood
+     * @param mood         mood title from {@link Moods}; unknown titles are sent as "Not Specified"
      * @param location
      * @param security
      * @param music
@@ -113,7 +113,7 @@ public class Entry {
             data += "&pass=" + URLEncoder.encode(password, StandardCharsets.UTF_8.displayName());
             data += "&security=" + securityInteger;
             data += "&location=" + locationInteger;
-            data += "&mood=12";  // Not Specified value
+            data += "&mood=" + Moods.idFor(mood);
             data += "&music=" + URLEncoder.encode(music, StandardCharsets.UTF_8.displayName());
             data += "&aformat=" + strFormat;
             data += "&allow_comment=" + strAllow;

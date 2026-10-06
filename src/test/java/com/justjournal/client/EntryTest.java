@@ -35,7 +35,7 @@ public class EntryTest {
 
     private boolean post(final String location, final String security,
                          final boolean format, final boolean email, final boolean allowComment) {
-        return entry.update("subject", "body", "happy", location, security, "music",
+        return entry.update("subject", "body", "Happy", location, security, "music",
                 format, email, allowComment);
     }
 
@@ -50,7 +50,7 @@ public class EntryTest {
 
     @Test
     public void testUpdateSendsFields() {
-        entry.update("Hello & welcome", "Line one\nüñí=+", "happy", "Home", "Public", "AC/DC",
+        entry.update("Hello & welcome", "Line one\nüñí=+", "Happy", "Home", "Public", "AC/DC",
                 true, false, true);
 
         final Map<String, String> fields = server.formFields();
@@ -59,7 +59,7 @@ public class EntryTest {
         assertEquals("Hello & welcome", fields.get("subject"));
         assertEquals("Line one\nüñí=+", fields.get("body"));
         assertEquals("AC/DC", fields.get("music"));
-        assertEquals("12", fields.get("mood"));
+        assertEquals("1", fields.get("mood"));
         assertEquals("1", fields.get("location"));
         assertEquals("2", fields.get("security"));
         assertEquals("checked", fields.get("aformat"));
@@ -82,6 +82,16 @@ public class EntryTest {
         for (final String[] c : cases) {
             post("Home", c[0], true, false, true);
             assertEquals(c[0], c[1], server.formFields().get("security"));
+        }
+    }
+
+    @Test
+    public void testUpdateMoodValues() {
+        final String[][] cases = {{"Happy", "1"}, {"Sad", "2"}, {"Pissed off", "36"}, {"Sick", "125"},
+                {"Not Specified", "12"}, {"happy", "12"}, {"Meh", "12"}, {null, "12"}};
+        for (final String[] c : cases) {
+            entry.update("subject", "body", c[0], "Home", "Public", "music", true, false, true);
+            assertEquals(c[0], c[1], server.formFields().get("mood"));
         }
     }
 

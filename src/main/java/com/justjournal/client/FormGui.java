@@ -320,7 +320,7 @@ public class FormGui implements ActionListener {
      * @return String array of mood list
      */
     private String[] moodList() {
-        return new String[]{"happy", "sad"};
+        return Moods.titles();
     }
 
 }
