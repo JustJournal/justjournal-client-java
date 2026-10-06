@@ -4,18 +4,23 @@ package com.justjournal.client;/*
  * Created on October 17, 2005, 9:33 AM
  */
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.net.ssl.HttpsURLConnection;
 import java.io.OutputStreamWriter;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 /**
  * @author caryn
  */
 public class Entry {
 
-    public static final String USER_AGENT = "JustJournal";
+    final Logger log = LoggerFactory.getLogger(Entry.class);
+
     public static final String JJ_JOURNAL_UPDATE_OK = "JJ.JOURNAL.UPDATE.OK";
     // account information
     private String username;
@@ -90,12 +95,12 @@ public class Entry {
         try {
 
             String data = "";
-            data += "user=" + URLEncoder.encode(username, "UTF-8");
-            data += "&pass=" + URLEncoder.encode(password, "UTF-8");
+            data += "user=" + URLEncoder.encode(username, StandardCharsets.UTF_8.displayName());
+            data += "&pass=" + URLEncoder.encode(password, StandardCharsets.UTF_8.displayName());
             data += "&security=" + securityInteger;
             data += "&location=" + locationInteger;
             data += "&mood=12";  // Not Specified value
-            data += "&music=" + URLEncoder.encode(music, "UTF-8");
+            data += "&music=" + URLEncoder.encode(music, StandardCharsets.UTF_8.displayName());
             data += "&aformat=" + strFormat;
             data += "&allow_comment=" + strAllow;
             data += "&email_comment=" + strEmail;
@@ -131,9 +136,9 @@ public class Entry {
 
             if (code.compareTo(JJ_JOURNAL_UPDATE_OK) == 0)
                 return true;
-            System.out.println("JJUpdate(): " + code);
+            log.debug("JJUpdate(): {}", code);
         } catch (final Exception e) {
-            System.err.println(e.getMessage());
+            log.error("Could not save entry", e);
         }
 
         // if we get this far, we failed
