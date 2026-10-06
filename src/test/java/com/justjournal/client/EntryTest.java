@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -103,6 +104,20 @@ public class EntryTest {
         assertEquals("unchecked", fields.get("aformat"));
         assertEquals("checked", fields.get("email_comment"));
         assertEquals("unchecked", fields.get("allow_comment"));
+    }
+
+    @Test
+    public void testUpdateLowercasesUsername() {
+        new Entry(" TestUser ", "testpass", server.url()).update("subject", "body", "Happy", "Home", "Public",
+                "music", true, false, true);
+        assertEquals("testuser", server.formFields().get("user"));
+    }
+
+    @Test
+    public void testUpdateInvalidCredentialsNotSent() {
+        assertFalse(new Entry("testuser", "bad%pass", server.url()).update("subject", "body", "Happy", "Home",
+                "Public", "music", true, false, true));
+        assertNull(server.requestMethod);
     }
 
     @Test

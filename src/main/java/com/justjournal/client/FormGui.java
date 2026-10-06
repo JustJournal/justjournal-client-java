@@ -4,9 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.event.ActionListener;
 import java.awt.event.ActionEvent;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author Caryn Holt
@@ -19,6 +23,7 @@ public class FormGui implements ActionListener {
     private JPanel loginPanel;
     private JTextField username;
     private JPasswordField password;
+    private JLabel loginProblems;
 
     private JTextField subject;
     private JTextArea body;
@@ -111,6 +116,31 @@ public class FormGui implements ActionListener {
         c.gridy = 1;
         c.insets = new Insets(5, 5, 5, 5);
         loginPanel.add(password, c);
+
+        loginProblems = new JLabel(" ");
+        loginProblems.setForeground(Color.RED);
+        c.gridx = 0;
+        c.gridy = 2;
+        c.gridwidth = 2;
+        loginPanel.add(loginProblems, c);
+        c.gridwidth = 1;
+
+        // show problems as the user types, but don't complain about fields they haven't filled in yet
+        final DocumentListener validator = new DocumentListener() {
+            public void insertUpdate(final DocumentEvent e) {
+                showLoginProblems(false);
+            }
+
+            public void removeUpdate(final DocumentEvent e) {
+                showLoginProblems(false);
+            }
+
+            public void changedUpdate(final DocumentEvent e) {
+                showLoginProblems(false);
+            }
+        };
+        username.getDocument().addDocumentListener(validator);
+        password.getDocument().addDocumentListener(validator);
 
         final JButton loginButton = new JButton("Login");
         // event for login button
@@ -256,7 +286,10 @@ public class FormGui implements ActionListener {
      * @return true if login was successful
      */
     private boolean login() {
-        final Auth jjLogin = new Auth(username.getText(), password.getText());
+        if (!showLoginProblems(true)) {
+            return false;
+        }
+        final Auth jjLogin = new Auth(username.getText(), new String(password.getPassword()));
 
         final boolean result;
 
@@ -266,6 +299,36 @@ public class FormGui implements ActionListener {
 
         // if login was successful, init update panel
         return result;
+    }
+
+    /**
+     * Shows what the server would reject about the username and password.
+     *
+     * @param includeEmpty also report fields that are still empty
+     * @return true if both are valid
+     */
+    private boolean showLoginProblems(final boolean includeEmpty) {
+        final String user = Credentials.normalizeUsername(username.getText());
+        final String pass = new String(password.getPassword());
+
+        final List<String> problems = new ArrayList<>();
+        if (includeEmpty || !user.isEmpty()) {
+            final String problem = Credentials.usernameProblem(user);
+            if (problem != null) {
+                problems.add(problem);
+            }
+        }
+        if (includeEmpty || !pass.isEmpty()) {
+            final String problem = Credentials.passwordProblem(pass);
+            if (problem != null) {
+                problems.add(problem);
+            }
+        }
+
+        // html so long messages wrap onto separate lines
+        loginProblems.setText(problems.isEmpty() ? " " : "<html>" + String.join("<br>", problems) + "</html>");
+        frame.pack();
+        return Credentials.problems(user, pass).isEmpty();
     }
 
     /**
@@ -283,6 +346,7 @@ public class FormGui implements ActionListener {
         } else if ("clear".equals(e.getActionCommand())) {
             username.setText("");
             password.setText("");
+            loginProblems.setText(" ");
         } else if ("clear update".equals(e.getActionCommand())) {
             initUpdate();
         } else if ("update".equals(e.getActionCommand())) {
@@ -302,8 +366,7 @@ public class FormGui implements ActionListener {
      * @return true if update was successful
      */
     private boolean update() {
-        //noinspection deprecation
-        final Entry updateJJ = new Entry(username.getText(), password.getText());
+        final Entry updateJJ = new Entry(username.getText(), new String(password.getPassword()));
         return updateJJ.update(subject.getText(), body.getText(),
                 selectedValue(mood), selectedValue(location),
                 selectedValue(security), music.getText(),

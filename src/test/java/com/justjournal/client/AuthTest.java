@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -62,6 +63,22 @@ public class AuthTest {
     }
 
     @Test
+    public void testRestLoginLowercasesUsername() throws IOException {
+        auth(" TestUser ", PASS).restLogin();
+        final JsonNode json = new ObjectMapper().readTree(server.requestBody);
+        assertEquals(USER, json.get("username").asText());
+    }
+
+    @Test
+    public void testRestLoginInvalidNotSent() {
+        assertFalse(auth("ab", PASS).restLogin());
+        assertFalse(auth("bad-name", PASS).restLogin());
+        assertFalse(auth(USER, "abcd").restLogin());
+        assertFalse(auth(USER, "pässword").restLogin());
+        assertNull(server.requestMethod);
+    }
+
+    @Test
     public void testRestLoginUnauthorized() {
         server.status = 401;
         assertFalse(auth(USER, PASS).restLogin());
@@ -99,13 +116,27 @@ public class AuthTest {
     @Test
     public void testSecureCheckAccountEncodesCredentials() {
         server.responseBody = "JJ.LOGIN.OK";
-        final String pass = "p&ss=wo+rd&username=other";
+        final String pass = "p&ss wo?d#^&username";
         auth("  " + USER + " ", pass).secureCheckAccount();
 
         final Map<String, String> fields = server.formFields();
         assertEquals(2, fields.size());
         assertEquals(USER, fields.get("username"));
         assertEquals(pass, fields.get("password"));
+    }
+
+    @Test
+    public void testSecureCheckAccountLowercasesUsername() {
+        server.responseBody = "JJ.LOGIN.OK";
+        auth("TestUser", PASS).secureCheckAccount();
+        assertEquals(USER, server.formFields().get("username"));
+    }
+
+    @Test
+    public void testSecureCheckAccountInvalidNotSent() {
+        server.responseBody = "JJ.LOGIN.OK";
+        assertFalse(auth(USER, "pass=word").secureCheckAccount());
+        assertNull(server.requestMethod);
     }
 
     @Test

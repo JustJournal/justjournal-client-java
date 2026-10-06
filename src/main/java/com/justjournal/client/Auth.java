@@ -15,6 +15,7 @@ import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * @author caryn
@@ -26,8 +27,8 @@ public class Auth {
     private static final String JJ_LOGIN_OK = "JJ.LOGIN.OK";
     private static final String SITE_URL = "https://www.justjournal.com/";
     private final String siteUrl;
-    private String userName;
-    private String password;
+    private final String userName;
+    private final String password;
 
     /**
      * Creates instance of jj_auth
@@ -47,7 +48,7 @@ public class Auth {
      * @param siteUrl  base url of the justjournal site, ending in /
      */
     Auth(final String username, final String password, final String siteUrl) {
-        userName = username;
+        userName = Credentials.normalizeUsername(username);
         this.password = password;
         this.siteUrl = siteUrl;
     }
@@ -58,9 +59,11 @@ public class Auth {
      * @return true if account is valid
      */
     public boolean secureCheckAccount() {
+        if (!isValid()) {
+            return false;
+        }
         try {
             // sending the post request
-            userName = userName.trim();
             String data = "username=" + URLEncoder.encode(userName, StandardCharsets.UTF_8.displayName());
             data += "&password=" + URLEncoder.encode(password, StandardCharsets.UTF_8.displayName());
             final HttpURLConnection conn = HttpUtils.getConnection(siteUrl + "loginAccount");
@@ -101,6 +104,9 @@ public class Auth {
      * @return true if login was successful
      */
     public boolean restLogin() {
+        if (!isValid()) {
+            return false;
+        }
         final Client client = ClientBuilder.newClient();
         try {
             final Login login = new Login();
@@ -125,6 +131,19 @@ public class Auth {
         } finally {
             client.close();
         }
+    }
+
+    /**
+     * Skips the request when the server would reject the credentials anyway, since a rejected
+     * login gets the caller's ip blocked for a while.
+     */
+    private boolean isValid() {
+        final List<String> problems = Credentials.problems(userName, password);
+        if (problems.isEmpty()) {
+            return true;
+        }
+        log.error("Not sending login: {}", String.join(" ", problems));
+        return false;
     }
 
 }

@@ -13,6 +13,7 @@ import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * @author caryn
@@ -25,8 +26,8 @@ public class Entry {
     private static final String SITE_URL = "https://www.justjournal.com/";
     private final String siteUrl;
     // account information
-    private String username;
-    private String password;
+    private final String username;
+    private final String password;
 
     /**
      * Constructor
@@ -46,7 +47,7 @@ public class Entry {
      * @param siteUrl    base url of the justjournal site, ending in /
      */
     Entry(final String jjUsername, final String jjPassword, final String siteUrl) {
-        username = jjUsername;
+        username = Credentials.normalizeUsername(jjUsername);
         password = jjPassword;
         this.siteUrl = siteUrl;
     }
@@ -68,6 +69,12 @@ public class Entry {
     public boolean update(final String subject, final String body, final String mood,
                           final String location, final String security, final String music,
                           final boolean format, final boolean email, final boolean allowComment) {
+
+        final List<String> problems = Credentials.problems(username, password);
+        if (!problems.isEmpty()) {
+            log.error("Not sending entry: {}", String.join(" ", problems));
+            return false;
+        }
 
         // location, mood, security are all int values
         // aformat, subject, body, allow_comments, email_comments (checked, unchecked) are strings
