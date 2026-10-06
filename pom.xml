@@ -14,6 +14,13 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.15</version>
+                <configuration>
+                    <!-- Swing GUI and its launcher aren't unit tested -->
+                    <excludes>
+                        <exclude>com/justjournal/client/FormGui*</exclude>
+                        <exclude>com/justjournal/client/JJClient*</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>default-check</id>
