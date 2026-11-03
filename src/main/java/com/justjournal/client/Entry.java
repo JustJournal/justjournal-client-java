@@ -4,54 +4,40 @@ package com.justjournal.client;/*
  * Created on October 17, 2005, 9:33 AM
  */
 
+import com.justjournal.client.model.EntryTo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
+import javax.ws.rs.ProcessingException;
+import javax.ws.rs.client.Client;
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.Entity;
+import javax.ws.rs.core.GenericType;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import java.util.Map;
 
 /**
+ * Posts journal entries to {@code /api/entry} using the session from {@link Auth}.
+ *
  * @author caryn
  */
 public class Entry {
 
     final Logger log = LoggerFactory.getLogger(Entry.class);
 
-    public static final String JJ_JOURNAL_UPDATE_OK = "JJ.JOURNAL.UPDATE.OK";
-    private static final String JJ_JOURNAL_UPDATE_FAIL = "JJ.JOURNAL.UPDATE.FAIL";
-    private static final String JJ_LOGIN_FAIL = "JJ.LOGIN.FAIL";
-    private final String siteUrl;
-    // account information
-    private final String username;
-    private final String password;
+    private static final String STATUS_OK = "ok";
+    static final String SESSION_EXPIRED = "Your login has expired. Log in again, then post the entry.";
+    private final Auth auth;
     private String lastError;
 
     /**
      * Constructor
      *
-     * @param jjUsername
-     * @param jjPassword
+     * @param auth a login that has succeeded
      */
-    public Entry(final String jjUsername, final String jjPassword) {
-        this(jjUsername, jjPassword, HttpUtils.SITE_URL);
-    }
-
-    /**
-     * Constructor for a specific server
-     *
-     * @param jjUsername
-     * @param jjPassword
-     * @param siteUrl    base url of the justjournal site, ending in /
-     */
-    Entry(final String jjUsername, final String jjPassword, final String siteUrl) {
-        username = Credentials.normalizeUsername(jjUsername);
-        password = jjPassword;
-        this.siteUrl = siteUrl;
+    public Entry(final Auth auth) {
+        this.auth = auth;
     }
 
     /**
@@ -72,116 +58,98 @@ public class Entry {
                           final String location, final String security, final String music,
                           final boolean format, final boolean email, final boolean allowComment) {
 
-        final List<String> problems = Credentials.problems(username, password);
-        if (!problems.isEmpty()) {
-            log.error("Not sending entry: {}", String.join(" ", problems));
-            lastError = String.join(" ", problems);
+        if (auth == null || !auth.isLoggedIn()) {
+            log.error("Not sending entry: not logged in");
+            lastError = "Log in before posting an entry.";
+            return false;
+        }
+        if (body == null || body.trim().isEmpty()) {
+            lastError = "Write something in the body before posting.";
             return false;
         }
 
-        // location, mood, security are all int values
-        // aformat, subject, body, allow_comments, email_comments (checked, unchecked) are strings
-
         // translate location to integer value
         int locationInteger = 0;
-        if (location.equals("Home"))
+        if ("Home".equals(location))
             locationInteger = 1;
-        else if (location.equals("Work"))
+        else if ("Work".equals(location))
             locationInteger = 2;
-        else if (location.equals("School"))
+        else if ("School".equals(location))
             locationInteger = 3;
-        else if (location.equals("Other"))
+        else if ("Other".equals(location))
             locationInteger = 5;
 
         // translate security to integer value
         // default value is public
         int securityInteger = 2;
-        if (security.equals("Private"))
+        if ("Private".equals(security))
             securityInteger = 0;
-        else if (security.equals("Friends Only"))
+        else if ("Friends Only".equals(security))
             securityInteger = 1;
 
-        // translate format, email and allow comments to string
-        // boolean to string for auto format
-        String strFormat = "checked";
-        if (!format)
-            strFormat = "unchecked";
+        final EntryTo entry = new EntryTo();
+        entry.setSubject(subject == null ? "" : subject);
+        entry.setBody(body);
+        entry.setSecurity(securityInteger);
+        entry.setLocation(locationInteger);
+        entry.setMood(Moods.idFor(mood));
+        entry.setMusic(music == null ? "" : music);
+        entry.setAutoFormat(format);
+        entry.setAllowComments(allowComment);
+        entry.setEmailComments(email);
 
-        // boolean to string for email comments
-        String strEmail = "unchecked";
-        if (email)
-            strEmail = "checked";
-
-        String strAllow = "checked";
-        if (!allowComment)
-            strAllow = "unchecked";
-
+        final Client client = ClientBuilder.newClient();
         try {
-
-            String data = "";
-            data += "user=" + URLEncoder.encode(username, StandardCharsets.UTF_8.displayName());
-            data += "&pass=" + URLEncoder.encode(password, StandardCharsets.UTF_8.displayName());
-            data += "&security=" + securityInteger;
-            data += "&location=" + locationInteger;
-            data += "&mood=" + Moods.idFor(mood);
-            data += "&music=" + URLEncoder.encode(music, StandardCharsets.UTF_8.displayName());
-            data += "&aformat=" + strFormat;
-            data += "&allow_comment=" + strAllow;
-            data += "&email_comment=" + strEmail;
-            //data += "&date=" + URLEncoder.encode(strDate, "UTF-8"); This is handled server side for now
-            data += "&subject=" + URLEncoder.encode(subject, StandardCharsets.UTF_8.displayName());
-            data += "&body=" + URLEncoder.encode(body, StandardCharsets.UTF_8.displayName());
-
-            final HttpURLConnection conn = HttpUtils.getConnection(siteUrl + "updateJournal");
-            conn.setRequestProperty("Content-Type", HttpUtils.FORM_URLENCODED);
-            conn.setRequestProperty("Content-Length", Integer.toString(data.length()));
-
-            final OutputStreamWriter writer =
-                    new OutputStreamWriter(conn.getOutputStream());
-
-            writer.write(data);
-            writer.flush();
-            writer.close();
-            // getting the response
-            final int status = conn.getResponseCode();
-            if (status != HttpURLConnection.HTTP_OK) {
-                log.error("Could not save entry, status {}", status);
-                lastError = HttpUtils.describeStatus(status);
-                return false;
-            }
-            final BufferedReader input = new BufferedReader(new InputStreamReader
-                    (conn.getInputStream()));
-            int response = input.read();
-            final char[] returnCode = new char[50];
-            int i = 0;
-            // for debugging
-            while (response != -1 && i < returnCode.length) {
-                returnCode[i] = (char) response;
-                i++;
-                response = input.read();
-            }
-            input.close();
-            String code = new String(returnCode);
-            code = code.trim();
-
-            if (code.compareTo(JJ_JOURNAL_UPDATE_OK) == 0)
-                return true;
-            log.debug("JJUpdate(): {}", code);
-            if (code.startsWith(JJ_LOGIN_FAIL)) {
-                lastError = Auth.BAD_LOGIN;
-            } else if (code.startsWith(JJ_JOURNAL_UPDATE_FAIL)) {
-                lastError = "The server couldn't save the entry. Check the entry and try again.";
-            } else {
-                lastError = "The server sent an unexpected reply, so the entry may not have been saved.";
+            final Response res = auth.request(client, "api/entry")
+                    .post(Entity.entity(entry, MediaType.APPLICATION_JSON));
+            try {
+                final int status = res.getStatus();
+                final Map<String, String> reply = readReply(res);
+                if (status == Response.Status.OK.getStatusCode()) {
+                    if (reply != null && STATUS_OK.equals(reply.get("status"))) {
+                        lastError = null;
+                        return true;
+                    }
+                    log.error("Unexpected reply saving entry: {}", reply);
+                    lastError = "The server sent an unexpected reply, so the entry may not have been saved.";
+                    return false;
+                }
+                log.error("Could not save entry, status {} {}", status, reply);
+                final String error = reply == null ? null : reply.get("error");
+                if (status == Response.Status.FORBIDDEN.getStatusCode()
+                        || status == Response.Status.UNAUTHORIZED.getStatusCode()) {
+                    lastError = SESSION_EXPIRED;
+                } else if (status == Response.Status.BAD_REQUEST.getStatusCode() && error != null) {
+                    lastError = "The server couldn't save the entry: " + error;
+                } else {
+                    lastError = HttpUtils.describeStatus(status);
+                }
+            } finally {
+                res.close();
             }
         } catch (final Exception e) {
             log.error("Could not save entry", e);
-            lastError = HttpUtils.describeFailure(siteUrl);
+            lastError = HttpUtils.describeFailure(auth.getSiteUrl());
+        } finally {
+            client.close();
         }
 
         // if we get this far, we failed
         // display error msg
         return false;
+    }
+
+    /**
+     * @return the JSON object the server replied with, or null if it isn't one
+     */
+    private Map<String, String> readReply(final Response res) {
+        try {
+            return res.readEntity(new GenericType<Map<String, String>>() {
+            });
+        } catch (ProcessingException | IllegalStateException e) {
+            log.debug("Reply was not a JSON object", e);
+            return null;
+        }
     }
 
     /**

@@ -16,8 +16,8 @@ public class jj_authTest {
 
     @Ignore("Integration test: calls the live justjournal.com server")
     @Test
-    public void testSecureCheckAccountFail() {
+    public void testRestLoginFail() {
         final Auth jjAuth = new Auth(FAIL_USER, FAIL_PASS);
-        assertFalse(jjAuth.secureCheckAccount());
+        assertFalse(jjAuth.restLogin());
     }
 }

@@ -25,6 +25,8 @@ public class FormGui implements ActionListener {
     private JTextField username;
     private JPasswordField password;
     private JLabel loginProblems;
+    // the session entries are posted with, set once a login succeeds
+    private Auth auth;
 
     private JTextField subject;
     private JTextArea body;
@@ -302,17 +304,48 @@ public class FormGui implements ActionListener {
         }
         final Auth jjLogin = new Auth(username.getText(), new String(password.getPassword()), siteUrl);
 
-        final boolean result;
-
-        result = jjLogin.restLogin();
-                //jjLogin.secureCheckAccount();
+        boolean result = jjLogin.restLogin();
+        if (!result && jjLogin.isSecondFactorRequired()) {
+            result = verifySecondFactor(jjLogin);
+            if (!result && jjLogin.isSecondFactorRequired()) {
+                // the user cancelled the code prompt
+                return false;
+            }
+        }
         log.info("Login successful? {}", result);
-        if (!result) {
+        if (result) {
+            auth = jjLogin;
+        } else {
             showError("Login failed", jjLogin.getLastError());
         }
 
         // if login was successful, init update panel
         return result;
+    }
+
+    /**
+     * Asks for the two-factor code until it is accepted, the user cancels, or the server gives up.
+     *
+     * @param jjLogin login whose password was accepted
+     * @return true if login was successful; false with the code still required if the user cancelled
+     */
+    private boolean verifySecondFactor(final Auth jjLogin) {
+        final String where = "EMAIL".equals(jjLogin.getSecondFactorMethod())
+                ? "Enter the code that was e-mailed to you."
+                : "Enter the code from your authenticator app.";
+        String prompt = where + " A recovery code also works.";
+        while (jjLogin.isSecondFactorRequired()) {
+            final String code = JOptionPane.showInputDialog(frame, prompt, "Two-factor login",
+                    JOptionPane.QUESTION_MESSAGE);
+            if (code == null) {
+                return false;
+            }
+            if (jjLogin.verifySecondFactor(code)) {
+                return true;
+            }
+            prompt = jjLogin.getLastError() + " " + where;
+        }
+        return false;
     }
 
     /**
@@ -380,7 +413,7 @@ public class FormGui implements ActionListener {
      * @return true if update was successful
      */
     private boolean update() {
-        final Entry updateJJ = new Entry(username.getText(), new String(password.getPassword()), siteUrl);
+        final Entry updateJJ = new Entry(auth);
         final boolean result = updateJJ.update(subject.getText(), body.getText(),
                 selectedValue(mood), selectedValue(location),
                 selectedValue(security), music.getText(),

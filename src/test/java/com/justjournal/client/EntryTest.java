@@ -1,11 +1,12 @@
 package com.justjournal.client;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -19,14 +20,21 @@ import static org.junit.Assert.assertTrue;
  */
 public class EntryTest {
 
+    private static final String SAVED = "{\"status\":\"ok\",\"id\":\"42\"}";
+
     private StubServer server;
     private Entry entry;
 
     @Before
     public void setUp() throws IOException {
         server = new StubServer();
-        server.responseBody = Entry.JJ_JOURNAL_UPDATE_OK;
-        entry = new Entry("testuser", "testpass", server.url());
+        server.reply("/api/login", 200, AuthTest.LOGIN_OK, "JSESSIONID=abc123; Path=/; HttpOnly");
+        server.contentType = "application/json";
+        server.responseBody = SAVED;
+
+        final Auth auth = new Auth("testuser", "testpass", server.url());
+        assertTrue(auth.restLogin());
+        entry = new Entry(auth);
     }
 
     @After
@@ -40,85 +48,123 @@ public class EntryTest {
                 format, email, allowComment);
     }
 
+    private JsonNode sent() throws IOException {
+        return new ObjectMapper().readTree(server.requestBodies.get("/api/entry"));
+    }
+
     @Test
     public void testUpdateSuccess() {
         assertTrue(post("Home", "Public", true, false, true));
         assertEquals("POST", server.requestMethod);
-        assertEquals("/updateJournal", server.requestPath);
-        assertEquals(HttpUtils.FORM_URLENCODED, server.requestContentType);
+        assertEquals("/api/entry", server.requestPath);
+        assertTrue(server.requestContentType.startsWith("application/json"));
         assertEquals("JustJournal", server.requestUserAgent);
     }
 
     @Test
-    public void testUpdateSendsFields() {
-        entry.update("Hello & welcome", "Line one\nüñí=+", "Happy", "Home", "Public", "AC/DC",
-                true, false, true);
+    public void testUpdateSendsSessionNotPassword() throws IOException {
+        post("Home", "Public", true, false, true);
+        assertEquals("JSESSIONID=abc123", server.requestCookies.get("/api/entry"));
 
-        final Map<String, String> fields = server.formFields();
-        assertEquals("testuser", fields.get("user"));
-        assertEquals("testpass", fields.get("pass"));
-        assertEquals("Hello & welcome", fields.get("subject"));
-        assertEquals("Line one\nüñí=+", fields.get("body"));
-        assertEquals("AC/DC", fields.get("music"));
-        assertEquals("1", fields.get("mood"));
-        assertEquals("1", fields.get("location"));
-        assertEquals("2", fields.get("security"));
-        assertEquals("checked", fields.get("aformat"));
-        assertEquals("unchecked", fields.get("email_comment"));
-        assertEquals("checked", fields.get("allow_comment"));
+        final JsonNode json = sent();
+        assertFalse(json.has("user"));
+        assertFalse(json.has("pass"));
+        assertFalse(json.has("username"));
+        assertFalse(json.has("password"));
     }
 
     @Test
-    public void testUpdateLocationValues() {
+    public void testUpdateSendsFields() throws IOException {
+        entry.update("Hello & welcome", "Line one\nüñí=+\"", "Happy", "Home", "Public", "AC/DC",
+                true, false, true);
+
+        final JsonNode json = sent();
+        assertEquals("Hello & welcome", json.get("subject").asText());
+        assertEquals("Line one\nüñí=+\"", json.get("body").asText());
+        assertEquals("AC/DC", json.get("music").asText());
+        assertEquals(1, json.get("mood").asInt());
+        assertEquals(1, json.get("location").asInt());
+        assertEquals(2, json.get("security").asInt());
+        assertTrue(json.get("security").isInt());
+        assertTrue(json.get("autoFormat").asBoolean());
+        assertFalse(json.get("emailComments").asBoolean());
+        assertTrue(json.get("allowComments").asBoolean());
+        assertEquals("TEXT", json.get("format").asText());
+        assertFalse(json.get("draft").asBoolean());
+        assertTrue(json.get("tags").isArray());
+        assertEquals(0, json.get("tags").size());
+    }
+
+    @Test
+    public void testUpdateLocationValues() throws IOException {
         final String[][] cases = {{"Home", "1"}, {"Work", "2"}, {"School", "3"}, {"Other", "5"}, {"Mars", "0"}};
         for (final String[] c : cases) {
             post(c[0], "Public", true, false, true);
-            assertEquals(c[0], c[1], server.formFields().get("location"));
+            assertEquals(c[0], c[1], sent().get("location").asText());
         }
     }
 
     @Test
-    public void testUpdateSecurityValues() {
+    public void testUpdateSecurityValues() throws IOException {
         final String[][] cases = {{"Private", "0"}, {"Friends Only", "1"}, {"Public", "2"}};
         for (final String[] c : cases) {
             post("Home", c[0], true, false, true);
-            assertEquals(c[0], c[1], server.formFields().get("security"));
+            assertEquals(c[0], c[1], sent().get("security").asText());
         }
     }
 
     @Test
-    public void testUpdateMoodValues() {
+    public void testUpdateMoodValues() throws IOException {
         final String[][] cases = {{"Happy", "1"}, {"Sad", "2"}, {"Pissed off", "36"}, {"Sick", "125"},
                 {"Not Specified", "12"}, {"happy", "12"}, {"Meh", "12"}, {null, "12"}};
         for (final String[] c : cases) {
             entry.update("subject", "body", c[0], "Home", "Public", "music", true, false, true);
-            assertEquals(c[0], c[1], server.formFields().get("mood"));
+            assertEquals(c[0], c[1], sent().get("mood").asText());
         }
     }
 
     @Test
-    public void testUpdateCheckboxesInverted() {
+    public void testUpdateCheckboxesInverted() throws IOException {
         post("Home", "Public", false, true, false);
 
-        final Map<String, String> fields = server.formFields();
-        assertEquals("unchecked", fields.get("aformat"));
-        assertEquals("checked", fields.get("email_comment"));
-        assertEquals("unchecked", fields.get("allow_comment"));
+        final JsonNode json = sent();
+        assertFalse(json.get("autoFormat").asBoolean());
+        assertTrue(json.get("emailComments").asBoolean());
+        assertFalse(json.get("allowComments").asBoolean());
     }
 
     @Test
-    public void testUpdateLowercasesUsername() {
-        new Entry(" TestUser ", "testpass", server.url()).update("subject", "body", "Happy", "Home", "Public",
-                "music", true, false, true);
-        assertEquals("testuser", server.formFields().get("user"));
+    public void testUpdateOnlyBodyRequired() throws IOException {
+        assertTrue(entry.update(null, "body", null, null, null, null, true, false, true));
+
+        final JsonNode json = sent();
+        assertEquals("", json.get("subject").asText());
+        assertEquals("", json.get("music").asText());
+        assertEquals(Moods.NOT_SPECIFIED_ID, json.get("mood").asInt());
+        assertEquals(0, json.get("location").asInt());
+        assertEquals(2, json.get("security").asInt());
     }
 
     @Test
-    public void testUpdateInvalidCredentialsNotSent() {
-        final Entry bad = new Entry("testuser", "bad%pass", server.url());
-        assertFalse(bad.update("subject", "body", "Happy", "Home", "Public", "music", true, false, true));
-        assertNull(server.requestMethod);
-        assertEquals(Credentials.passwordProblem("bad%pass"), bad.getLastError());
+    public void testUpdateBlankBodyNotSent() {
+        assertFalse(entry.update("subject", " \n ", "Happy", "Home", "Public", "music", true, false, true));
+        assertFalse(server.requestBodies.containsKey("/api/entry"));
+        assertTrue(entry.getLastError(), entry.getLastError().contains("body"));
+    }
+
+    @Test
+    public void testUpdateNotLoggedInNotSent() {
+        final Auth failed = new Auth("testuser", "bad%pass", server.url());
+        assertFalse(failed.restLogin());
+
+        final Entry notLoggedIn = new Entry(failed);
+        assertFalse(notLoggedIn.update("subject", "body", "Happy", "Home", "Public", "music", true, false, true));
+        assertFalse(server.requestBodies.containsKey("/api/entry"));
+        assertTrue(notLoggedIn.getLastError(), notLoggedIn.getLastError().startsWith("Log in"));
+
+        assertFalse(new Entry(null).update("subject", "body", "Happy", "Home", "Public", "music",
+                true, false, true));
+        assertFalse(server.requestBodies.containsKey("/api/entry"));
     }
 
     @Test
@@ -129,36 +175,39 @@ public class EntryTest {
 
     @Test
     public void testUpdateRejected() {
-        server.responseBody = "JJ.JOURNAL.UPDATE.FAIL";
+        server.status = 400;
+        server.responseBody = "{\"error\":\"Entry does not contain a body.\"}";
         assertFalse(post("Home", "Public", true, false, true));
-        assertTrue(entry.getLastError(), entry.getLastError().startsWith("The server couldn't save the entry"));
+        assertEquals("The server couldn't save the entry: Entry does not contain a body.", entry.getLastError());
     }
 
     @Test
-    public void testUpdateBadLogin() {
-        // the server writes the failure code twice when authentication fails
-        server.responseBody = "JJ.LOGIN.FAILJJ.LOGIN.FAIL";
+    public void testUpdateSessionExpired() {
+        server.status = 403;
+        server.responseBody = "{\"error\":\"The login timed out or is invalid.\"}";
         assertFalse(post("Home", "Public", true, false, true));
-        assertEquals(Auth.BAD_LOGIN, entry.getLastError());
+        assertEquals(Entry.SESSION_EXPIRED, entry.getLastError());
     }
 
     @Test
     public void testUpdateUnexpectedResponse() {
-        server.responseBody = "JJ.ERROR";
+        server.responseBody = "{\"status\":\"error\"}";
         assertFalse(post("Home", "Public", true, false, true));
         assertTrue(entry.getLastError(), entry.getLastError().startsWith("The server sent an unexpected reply"));
     }
 
     @Test
-    public void testUpdateLongResponse() {
-        server.responseBody = "x".repeat(500);
+    public void testUpdateNotJsonResponse() {
+        server.contentType = "text/plain";
+        server.responseBody = "JJ.JOURNAL.UPDATE.OK";
         assertFalse(post("Home", "Public", true, false, true));
+        assertTrue(entry.getLastError(), entry.getLastError().startsWith("The server sent an unexpected reply"));
     }
 
     @Test
     public void testUpdateServerError() {
         server.status = 500;
-        server.responseBody = Entry.JJ_JOURNAL_UPDATE_OK;
+        server.responseBody = SAVED;
         assertFalse(post("Home", "Public", true, false, true));
         assertEquals("The server had a problem (HTTP 500). Try again later.", entry.getLastError());
     }

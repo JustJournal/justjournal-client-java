@@ -7,20 +7,27 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Local stand-in for the justjournal.com server. Every path answers with the
- * configured status and body, and the last request is recorded.
+ * Local stand-in for the justjournal.com server. Paths given a {@link #reply} answer with it,
+ * every other path answers with the configured status and body. The last request is recorded,
+ * and the last body and cookie header sent to each path.
  *
  * @author Lucas Holt
  */
 class StubServer implements AutoCloseable {
 
+    /** A canned JSON response for one path. */
+    record Reply(int status, String body, List<String> setCookies) {
+    }
+
     private final HttpServer server;
+    private final Map<String, Reply> replies = new ConcurrentHashMap<>();
 
     volatile int status = 200;
     volatile String contentType = "text/plain";
@@ -31,6 +38,9 @@ class StubServer implements AutoCloseable {
     volatile String requestContentType;
     volatile String requestUserAgent;
     volatile String requestBody;
+    volatile String requestCookie;
+    final Map<String, String> requestBodies = new ConcurrentHashMap<>();
+    final Map<String, String> requestCookies = new ConcurrentHashMap<>();
 
     StubServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -39,11 +49,23 @@ class StubServer implements AutoCloseable {
             requestPath = exchange.getRequestURI().getPath();
             requestContentType = exchange.getRequestHeaders().getFirst("Content-Type");
             requestUserAgent = exchange.getRequestHeaders().getFirst("User-Agent");
+            requestCookie = exchange.getRequestHeaders().getFirst("Cookie");
             requestBody = readAll(exchange.getRequestBody());
+            requestBodies.put(requestPath, requestBody);
+            if (requestCookie != null) {
+                requestCookies.put(requestPath, requestCookie);
+            }
 
-            final byte[] response = responseBody.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", contentType);
-            exchange.sendResponseHeaders(status, response.length == 0 ? -1 : response.length);
+            final Reply reply = replies.get(requestPath);
+            final byte[] response = (reply != null ? reply.body() : responseBody).getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", reply != null ? "application/json" : contentType);
+            if (reply != null) {
+                for (final String cookie : reply.setCookies()) {
+                    exchange.getResponseHeaders().add("Set-Cookie", cookie);
+                }
+            }
+            exchange.sendResponseHeaders(reply != null ? reply.status() : status,
+                    response.length == 0 ? -1 : response.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response);
             }
@@ -52,23 +74,22 @@ class StubServer implements AutoCloseable {
     }
 
     /**
+     * Makes one path answer with a JSON body.
+     *
+     * @param path       request path, starting with /
+     * @param status     HTTP status
+     * @param body       JSON body
+     * @param setCookies Set-Cookie header values to send
+     */
+    void reply(final String path, final int status, final String body, final String... setCookies) {
+        replies.put(path, new Reply(status, body, Arrays.asList(setCookies)));
+    }
+
+    /**
      * @return base url of the stub, ending in /
      */
     String url() {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/";
-    }
-
-    /**
-     * @return the last request body decoded as form fields
-     */
-    Map<String, String> formFields() {
-        final Map<String, String> fields = new HashMap<>();
-        for (final String pair : requestBody.split("&")) {
-            final String[] kv = pair.split("=", 2);
-            fields.put(URLDecoder.decode(kv[0], StandardCharsets.UTF_8),
-                    kv.length > 1 ? URLDecoder.decode(kv[1], StandardCharsets.UTF_8) : "");
-        }
-        return fields;
     }
 
     @Override
